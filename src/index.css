@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+
+  @supports (-webkit-overflow-scrolling: touch) {
+    .overflow-scroll {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+}
