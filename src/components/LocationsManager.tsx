@@ -653,7 +653,7 @@ function ReturnToolDialog({
     try {
       const { data: tool } = await supabase
         .from('tools')
-        .select('status, location_id')
+        .select('status, location_id, person_id')
         .eq('id', toolId)
         .maybeSingle();
 
@@ -664,17 +664,31 @@ function ReturnToolDialog({
 
       const targetLocationId = condition === 'lost' ? null : (returnLocationId || null);
 
-      const { error: updateError } = await supabase
+      const updateData: any = {
+        location_id: targetLocationId,
+        status: newStatus,
+      };
+
+      if (tool?.person_id) {
+        updateData.person_id = null;
+      }
+
+      const { error: updateError, data: updatedTool } = await supabase
         .from('tools')
-        .update({
-          location_id: targetLocationId,
-          status: newStatus,
-        })
-        .eq('id', toolId);
+        .update(updateData)
+        .eq('id', toolId)
+        .select();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Update error:', updateError);
+        throw updateError;
+      }
 
-      await supabase.from('tool_event_log').insert([{
+      if (!updatedTool || updatedTool.length === 0) {
+        throw new Error('Tool update failed - no rows returned');
+      }
+
+      const { error: logError } = await supabase.from('tool_event_log').insert([{
         tool_id: toolId,
         event_type: 'returned',
         from_location_id: fromLocationId,
@@ -685,10 +699,14 @@ function ReturnToolDialog({
         user_id: userId,
       }]);
 
+      if (logError) {
+        console.error('Event log error:', logError);
+      }
+
       onClose();
     } catch (error) {
       console.error('Error returning tool:', error);
-      alert('Error returning tool');
+      alert(`Error returning tool: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
