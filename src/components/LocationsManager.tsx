@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Trash2, X, MapPin, ChevronDown, ChevronRight, Wrench, Warehouse, ArrowLeft, RotateCcw, Clock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,19 +27,37 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [deleteCountdown, setDeleteCountdown] = useState<number>(10);
+  const [deleteReady, setDeleteReady] = useState(false);
+  const deleteIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadLocations();
   }, []);
 
   useEffect(() => {
-    if (deletingLocationId !== null && deleteCountdown > 0) {
-      const timer = setTimeout(() => {
-        setDeleteCountdown(deleteCountdown - 1);
+    if (deletingLocationId !== null) {
+      setDeleteReady(false);
+      setDeleteCountdown(10);
+      deleteIntervalRef.current = setInterval(() => {
+        setDeleteCountdown(prev => {
+          if (prev <= 1) {
+            if (deleteIntervalRef.current) clearInterval(deleteIntervalRef.current);
+            deleteIntervalRef.current = null;
+            setDeleteReady(true);
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
-      return () => clearTimeout(timer);
+    } else {
+      if (deleteIntervalRef.current) clearInterval(deleteIntervalRef.current);
+      deleteIntervalRef.current = null;
+      setDeleteReady(false);
     }
-  }, [deletingLocationId, deleteCountdown]);
+    return () => {
+      if (deleteIntervalRef.current) clearInterval(deleteIntervalRef.current);
+    };
+  }, [deletingLocationId]);
 
   async function loadLocations() {
     try {
@@ -85,33 +103,30 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
     }
   }
 
-  function initiateDeleteLocation(id: string) {
+  const initiateDeleteLocation = useCallback((id: string) => {
     setDeletingLocationId(id);
-    setDeleteCountdown(10);
-  }
+  }, []);
 
-  function cancelDelete() {
+  const cancelDelete = useCallback(() => {
     setDeletingLocationId(null);
-    setDeleteCountdown(10);
-  }
+  }, []);
 
-  async function confirmDeleteLocation() {
-    if (!deletingLocationId) return;
+  const confirmDeleteLocation = useCallback(async () => {
+    const idToDelete = deletingLocationId;
+    if (!idToDelete) return;
 
     try {
-      const { error } = await supabase.from('locations').delete().eq('id', deletingLocationId);
+      const { error } = await supabase.from('locations').delete().eq('id', idToDelete);
       if (error) throw error;
       setDeletingLocationId(null);
-      setDeleteCountdown(10);
       await loadLocations();
       onUpdate();
     } catch (error) {
       console.error('Error deleting location:', error);
       alert('Error deleting location');
       setDeletingLocationId(null);
-      setDeleteCountdown(10);
     }
-  }
+  }, [deletingLocationId, onUpdate]);
 
   function handleEdit(location: Location) {
     setEditingLocation(location);
@@ -238,7 +253,7 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
                 </p>
               </div>
 
-              {deleteCountdown > 0 ? (
+              {!deleteReady ? (
                 <div className="space-y-4">
                   <div className="relative pt-1">
                     <div className="flex items-center justify-center mb-2">
@@ -263,13 +278,15 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
                   <p className="text-lg font-semibold text-red-600 mb-4">Proceed with deletion?</p>
                   <div className="flex gap-3">
                     <button
-                      onClick={cancelDelete}
+                      type="button"
+                      onClick={() => { cancelDelete(); }}
                       className="flex-1 px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={confirmDeleteLocation}
+                      type="button"
+                      onClick={() => { confirmDeleteLocation(); }}
                       className="flex-1 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors"
                     >
                       Delete Now
@@ -423,28 +440,44 @@ function LocationForm({
   const [saving, setSaving] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [countdown, setCountdown] = useState(10);
+  const [confirmReady, setConfirmReady] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (showConfirmation && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
+    if (showConfirmation) {
+      setConfirmReady(false);
+      setCountdown(10);
+      intervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            intervalRef.current = null;
+            setConfirmReady(true);
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
-      return () => clearTimeout(timer);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      setConfirmReady(false);
     }
-  }, [showConfirmation, countdown]);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [showConfirmation]);
 
-  function initiateSubmit(e: React.FormEvent) {
+  const initiateSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setShowConfirmation(true);
-    setCountdown(10);
-  }
+  }, []);
 
-  function cancelSubmit() {
+  const cancelSubmit = useCallback(() => {
     setShowConfirmation(false);
-    setCountdown(10);
-  }
+  }, []);
 
-  async function confirmSubmit() {
+  const confirmSubmit = useCallback(async () => {
     setSaving(true);
 
     try {
@@ -468,11 +501,10 @@ function LocationForm({
       console.error('Error saving location:', error);
       alert('Error saving location');
       setShowConfirmation(false);
-      setCountdown(10);
     } finally {
       setSaving(false);
     }
-  }
+  }, [formData, location, onClose]);
 
   if (showConfirmation) {
     return (
@@ -489,7 +521,7 @@ function LocationForm({
               </p>
             </div>
 
-            {countdown > 0 ? (
+            {!confirmReady ? (
               <div className="space-y-4">
                 <div className="relative pt-1">
                   <div className="flex items-center justify-center mb-2">
@@ -503,7 +535,8 @@ function LocationForm({
                   </div>
                 </div>
                 <button
-                  onClick={cancelSubmit}
+                  type="button"
+                  onClick={() => { cancelSubmit(); }}
                   className="w-full px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors"
                 >
                   Cancel
@@ -516,13 +549,15 @@ function LocationForm({
                 </p>
                 <div className="flex gap-3">
                   <button
-                    onClick={cancelSubmit}
+                    type="button"
+                    onClick={() => { cancelSubmit(); }}
                     className="flex-1 px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={confirmSubmit}
+                    type="button"
+                    onClick={() => { confirmSubmit(); }}
                     disabled={saving}
                     className="flex-1 px-4 py-2 bg-amber-500 text-gray-900 font-semibold rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
                   >
