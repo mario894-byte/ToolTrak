@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Edit2, Trash2, X, MapPin, ChevronDown, ChevronRight, Wrench, Warehouse, ArrowLeft, RotateCcw, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, MapPin, ChevronDown, ChevronRight, Wrench, Warehouse, ArrowLeft, RotateCcw, Clock, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type Tool = {
@@ -29,6 +29,7 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
   const [deleteCountdown, setDeleteCountdown] = useState<number>(10);
   const [deleteReady, setDeleteReady] = useState(false);
   const deleteIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [returningTool, setReturningTool] = useState<{ id: string; name: string; locationId: string } | null>(null);
 
   useEffect(() => {
     loadLocations();
@@ -157,55 +158,10 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
     });
   }
 
-  async function returnToolToWarehouse(toolId: string, toolName: string, currentLocationId: string) {
-    if (!confirm(`Return ${toolName} to warehouse?`)) return;
-
-    try {
-      const { data: baseWarehouses } = await supabase
-        .from('locations')
-        .select('id, name')
-        .eq('is_base_warehouse', true)
-        .limit(1)
-        .maybeSingle();
-
-      if (!baseWarehouses) {
-        alert('No base warehouse found. Please create a base warehouse first.');
-        return;
-      }
-
-      const { data: tool } = await supabase
-        .from('tools')
-        .select('status, location_id')
-        .eq('id', toolId)
-        .maybeSingle();
-
-      const { error: updateError } = await supabase
-        .from('tools')
-        .update({
-          location_id: baseWarehouses.id,
-          status: 'available'
-        })
-        .eq('id', toolId);
-
-      if (updateError) throw updateError;
-
-      await supabase.from('tool_event_log').insert([{
-        tool_id: toolId,
-        event_type: 'returned',
-        from_location_id: currentLocationId,
-        to_location_id: baseWarehouses.id,
-        old_status: tool?.status || null,
-        new_status: 'available',
-        notes: 'Returned to warehouse from location',
-        user_id: user?.id || null
-      }]);
-
-      await loadLocations();
-      onUpdate();
-    } catch (error) {
-      console.error('Error returning tool:', error);
-      alert('Error returning tool to warehouse');
-    }
+  function handleReturnToolClose() {
+    setReturningTool(null);
+    loadLocations();
+    onUpdate();
   }
 
   if (loading) {
@@ -240,6 +196,16 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
       </div>
 
       {showForm && <LocationForm location={editingLocation} onClose={handleFormClose} />}
+
+      {returningTool && (
+        <ReturnToolDialog
+          toolId={returningTool.id}
+          toolName={returningTool.name}
+          fromLocationId={returningTool.locationId}
+          userId={user?.id || null}
+          onClose={handleReturnToolClose}
+        />
+      )}
 
       {deletingLocationId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -402,15 +368,13 @@ export default function LocationsManager({ onUpdate, isAdmin, onBack }: { onUpda
                                 ${tool.purchase_price.toFixed(2)}
                               </span>
                             )}
-                            {!location.is_base_warehouse && (
-                              <button
-                                onClick={() => returnToolToWarehouse(tool.id, tool.name, location.id)}
-                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                                title="Return to warehouse"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setReturningTool({ id: tool.id, name: tool.name, locationId: location.id })}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                              title="Return tool"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -629,6 +593,271 @@ function LocationForm({
               className="px-4 py-2 bg-amber-500 text-gray-900 font-semibold rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
             >
               {saving ? 'Saving...' : location ? 'Update' : 'Add Location'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+type ReturnLocation = {
+  id: string;
+  name: string;
+  is_base_warehouse: boolean;
+};
+
+function ReturnToolDialog({
+  toolId,
+  toolName,
+  fromLocationId,
+  userId,
+  onClose,
+}: {
+  toolId: string;
+  toolName: string;
+  fromLocationId: string;
+  userId: string | null;
+  onClose: () => void;
+}) {
+  const [locations, setLocations] = useState<ReturnLocation[]>([]);
+  const [returnLocationId, setReturnLocationId] = useState('');
+  const [condition, setCondition] = useState<'good' | 'maintenance' | 'damaged' | 'lost'>('good');
+  const [returnNotes, setReturnNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadLocations();
+  }, []);
+
+  async function loadLocations() {
+    const { data } = await supabase
+      .from('locations')
+      .select('id, name, is_base_warehouse')
+      .order('is_base_warehouse', { ascending: false })
+      .order('name');
+
+    if (data) {
+      setLocations(data);
+      const defaultWarehouse = data.find(l => l.is_base_warehouse);
+      if (defaultWarehouse) {
+        setReturnLocationId(defaultWarehouse.id);
+      }
+    }
+  }
+
+  async function handleReturn(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+
+    try {
+      const { data: tool } = await supabase
+        .from('tools')
+        .select('status, location_id')
+        .eq('id', toolId)
+        .maybeSingle();
+
+      let newStatus = 'available';
+      if (condition === 'maintenance') newStatus = 'maintenance';
+      if (condition === 'damaged') newStatus = 'damaged';
+      if (condition === 'lost') newStatus = 'lost';
+
+      const targetLocationId = condition === 'lost' ? null : (returnLocationId || null);
+
+      const { error: updateError } = await supabase
+        .from('tools')
+        .update({
+          location_id: targetLocationId,
+          status: newStatus,
+        })
+        .eq('id', toolId);
+
+      if (updateError) throw updateError;
+
+      await supabase.from('tool_event_log').insert([{
+        tool_id: toolId,
+        event_type: 'returned',
+        from_location_id: fromLocationId,
+        to_location_id: targetLocationId,
+        old_status: tool?.status || null,
+        new_status: newStatus,
+        notes: `Returned with condition: ${condition}${returnNotes ? '. ' + returnNotes : ''}`,
+        user_id: userId,
+      }]);
+
+      onClose();
+    } catch (error) {
+      console.error('Error returning tool:', error);
+      alert('Error returning tool');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const baseWarehouses = locations.filter(l => l.is_base_warehouse);
+  const otherLocations = locations.filter(l => !l.is_base_warehouse);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Return Tool</h3>
+            <p className="text-sm text-gray-500 mt-1">{toolName}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleReturn} className="p-6 space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Condition
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setCondition('good')}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
+                  condition === 'good'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Good</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCondition('maintenance')}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
+                  condition === 'maintenance'
+                    ? 'border-blue-500 bg-blue-50 text-blue-800'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                <Wrench className="w-5 h-5" />
+                <span className="text-sm font-medium">Maintenance</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCondition('damaged')}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
+                  condition === 'damaged'
+                    ? 'border-orange-500 bg-orange-50 text-orange-800'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5" />
+                <span className="text-sm font-medium">Damaged</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCondition('lost')}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
+                  condition === 'lost'
+                    ? 'border-red-500 bg-red-50 text-red-800'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                <XCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Lost</span>
+              </button>
+            </div>
+          </div>
+
+          {condition !== 'lost' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Return Location *
+              </label>
+              <select
+                required
+                value={returnLocationId}
+                onChange={(e) => setReturnLocationId(e.target.value)}
+                className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              >
+                <option value="">Select return location</option>
+                {baseWarehouses.length > 0 && (
+                  <optgroup label="Base Warehouses">
+                    {baseWarehouses.map((loc) => (
+                      <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherLocations.length > 0 && (
+                  <optgroup label="Other Locations">
+                    {otherLocations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          )}
+
+          {(condition === 'maintenance' || condition === 'damaged' || condition === 'lost') && (
+            <div className={`p-4 rounded-lg border ${
+              condition === 'maintenance' ? 'bg-blue-50 border-blue-200' :
+              condition === 'damaged' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'
+            }`}>
+              <label className={`block text-sm font-medium mb-1 ${
+                condition === 'maintenance' ? 'text-blue-800' :
+                condition === 'damaged' ? 'text-orange-800' : 'text-red-800'
+              }`}>
+                {condition === 'maintenance' ? 'Maintenance notes *' :
+                 condition === 'damaged' ? 'Describe the damage *' : 'Describe what happened *'}
+              </label>
+              <textarea
+                required
+                value={returnNotes}
+                onChange={(e) => setReturnNotes(e.target.value)}
+                rows={3}
+                placeholder={
+                  condition === 'maintenance'
+                    ? 'What maintenance is needed? Be specific...'
+                    : condition === 'damaged'
+                    ? 'What damage occurred? Be specific...'
+                    : 'When and where was the tool last seen?'
+                }
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
+                  condition === 'maintenance'
+                    ? 'border-blue-300 focus:ring-blue-400 focus:border-blue-400'
+                    : condition === 'damaged'
+                    ? 'border-orange-300 focus:ring-orange-400 focus:border-orange-400'
+                    : 'border-red-300 focus:ring-red-400 focus:border-red-400'
+                } bg-white`}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 border border-stone-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className={`px-4 py-2 font-semibold rounded-lg transition-colors disabled:opacity-50 ${
+                condition === 'lost'
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : condition === 'damaged'
+                  ? 'bg-orange-500 text-white hover:bg-orange-600'
+                  : 'bg-emerald-500 text-white hover:bg-emerald-600'
+              }`}
+            >
+              {saving
+                ? 'Returning...'
+                : condition === 'lost' ? 'Report Lost' : condition === 'damaged' ? 'Return as Damaged' : 'Return Tool'
+              }
             </button>
           </div>
         </form>
