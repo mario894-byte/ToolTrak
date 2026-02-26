@@ -80,22 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle();
-
-      if (existingUser) {
-        return { error: new Error('An account with this email already exists') };
-      }
-
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (authError) return { error: authError };
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          return { error: new Error('An account with this email already exists') };
+        }
+        return { error: authError };
+      }
+
       if (!authData.user) return { error: new Error('Failed to create user') };
 
       const { data: orgData, error: orgError } = await supabase
