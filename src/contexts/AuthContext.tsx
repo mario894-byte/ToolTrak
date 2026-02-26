@@ -17,7 +17,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName: string, organizationName: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
 }
@@ -78,8 +78,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string, organizationName: string) => {
+  const signUp = async (email: string, password: string, fullName: string) => {
     try {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingUser) {
+        return { error: new Error('An account with this email already exists') };
+      }
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -90,12 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
-        .insert({ name: organizationName })
+        .insert({ name: `${fullName}'s Organization` })
         .select()
         .single();
 
       if (orgError) {
-        await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
         return { error: orgError };
       }
 
@@ -110,8 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
       if (profileError) {
-        await supabase.from('organizations').delete().eq('id', orgData.id).catch(() => {});
-        await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
         return { error: profileError };
       }
 

@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Clock, Mail, Lock, AlertCircle, Building2, User } from 'lucide-react';
+import { Clock, Mail, Lock, AlertCircle, User } from 'lucide-react';
 
 export default function AuthForm() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [organizationName, setOrganizationName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
@@ -29,14 +28,14 @@ export default function AuthForm() {
       return;
     }
 
-    if (isSignUp && (!fullName || !organizationName)) {
+    if (isSignUp && !fullName) {
       setError('Please fill in all fields');
       setLoading(false);
       return;
     }
 
     const { error: authError } = isSignUp
-      ? await signUp(email, password, fullName, organizationName)
+      ? await signUp(email, password, fullName)
       : await signIn(email, password);
 
     if (authError) {
@@ -54,7 +53,7 @@ export default function AuthForm() {
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">TimeTracker</h1>
           <p className="text-blue-100 text-sm">
-            {isSignUp ? 'Create your organization account' : 'Track time with precision'}
+            {isSignUp ? 'Create your account' : 'Track time with precision'}
           </p>
         </div>
 
@@ -67,43 +66,23 @@ export default function AuthForm() {
           )}
 
           {isSignUp && (
-            <>
-              <div>
-                <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    id="fullName"
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="John Doe"
-                    required
-                  />
-                </div>
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-2">
+                Full Name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder="John Doe"
+                  required
+                />
               </div>
-
-              <div>
-                <label htmlFor="organizationName" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Organization Name
-                </label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    id="organizationName"
-                    type="text"
-                    value={organizationName}
-                    onChange={(e) => setOrganizationName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="Acme Corp"
-                    required
-                  />
-                </div>
-              </div>
-            </>
+            </div>
           )}
 
           <div>
