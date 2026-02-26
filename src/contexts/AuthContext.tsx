@@ -94,7 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select()
         .single();
 
-      if (orgError) return { error: orgError };
+      if (orgError) {
+        await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+        return { error: orgError };
+      }
 
       const { error: profileError } = await supabase
         .from('users')
@@ -106,7 +109,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           organization_id: orgData.id,
         });
 
-      if (profileError) return { error: profileError };
+      if (profileError) {
+        await supabase.from('organizations').delete().eq('id', orgData.id).catch(() => {});
+        await supabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+        return { error: profileError };
+      }
 
       return { error: null };
     } catch (error) {
