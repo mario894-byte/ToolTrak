@@ -70,8 +70,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return { error };
+
+      if (data.user) {
+        const { data: profileData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        if (!profileData) {
+          await supabase.auth.signOut();
+          return { error: new Error('Account setup incomplete. Please contact support.') };
+        }
+      }
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -87,6 +101,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (authError) {
         if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (!existingUser) {
+            return { error: new Error('Account exists but setup is incomplete. Please reset your password to complete setup.') };
+          }
           return { error: new Error('An account with this email already exists. Please sign in instead.') };
         }
         return { error: authError };
@@ -101,8 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (orgError) {
-        await supabase.auth.signOut();
-        return { error: new Error('Failed to create organization. Please try signing in.') };
+        return { error: new Error('Failed to create organization. Please contact support.') };
       }
 
       const { error: profileError } = await supabase
@@ -116,8 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
       if (profileError) {
-        await supabase.auth.signOut();
-        return { error: new Error('Failed to create profile. Please try signing in.') };
+        return { error: new Error('Failed to create profile. Please contact support.') };
       }
 
       return { error: null };
