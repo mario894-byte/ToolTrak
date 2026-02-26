@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Trash2, X, MapPin, ChevronDown, ChevronRight, Wrench, Warehouse, ArrowLeft, RotateCcw, Clock, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import LocationMapPicker from './LocationMapPicker';
 
 type Tool = {
   id: string;
@@ -14,6 +15,9 @@ type Location = {
   name: string;
   description: string | null;
   is_base_warehouse: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofence_radius?: number | null;
   toolValue?: number;
   tools?: Tool[];
 };
@@ -400,6 +404,9 @@ function LocationForm({
   const [formData, setFormData] = useState({
     name: location?.name || '',
     description: location?.description || '',
+    latitude: location?.latitude || 40.7128,
+    longitude: location?.longitude || -74.0060,
+    geofence_radius: location?.geofence_radius || 100,
   });
   const [saving, setSaving] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -448,6 +455,9 @@ function LocationForm({
       const data = {
         name: formData.name,
         description: formData.description || null,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        geofence_radius: formData.geofence_radius,
       };
 
       if (location) {
@@ -537,8 +547,8 @@ function LocationForm({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h3 className="text-xl font-bold text-gray-900">
             {location ? 'Edit Location' : 'Add New Location'}
@@ -551,7 +561,7 @@ function LocationForm({
           </button>
         </div>
 
-        <form onSubmit={initiateSubmit} className="p-6 space-y-4">
+        <form onSubmit={initiateSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Location Name *
@@ -576,6 +586,25 @@ function LocationForm({
               rows={3}
               placeholder="Additional details about this location"
               className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Location & Geofence
+            </label>
+            <LocationMapPicker
+              latitude={formData.latitude}
+              longitude={formData.longitude}
+              radius={formData.geofence_radius}
+              onLocationChange={(lat, lng, radius) => {
+                setFormData({
+                  ...formData,
+                  latitude: lat,
+                  longitude: lng,
+                  geofence_radius: radius,
+                });
+              }}
             />
           </div>
 
