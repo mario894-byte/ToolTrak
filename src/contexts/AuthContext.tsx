@@ -2,40 +2,53 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'admin' | 'employee';
+  organization_id: string;
+  phone?: string;
+  is_active: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
-  isAdmin: boolean;
+  profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string, organizationName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function checkAdminStatus(email: string | undefined) {
-    if (!email) {
-      setIsAdmin(false);
+  async function loadProfile(userId: string) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading profile:', error);
       return;
     }
-    const { data } = await supabase
-      .from('allowed_emails')
-      .select('is_admin')
-      .eq('email', email.toLowerCase().trim())
-      .maybeSingle();
-    setIsAdmin(data?.is_admin === true);
+
+    setProfile(data);
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        checkAdminStatus(session.user.email).then(() => setLoading(false));
+        loadProfile(session.user.id).then(() => setLoading(false));
       } else {
         setLoading(false);
       }
@@ -44,7 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       (async () => {
         setUser(session?.user ?? null);
-        await checkAdminStatus(session?.user?.email);
+        if (session?.user) {
+          await loadProfile(session.user.id);
+        } else {
+          setProfile(null);
+        }
       })();
     });
 
@@ -61,28 +78,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, fullName: string, organizationName: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { error };
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-      if (data.user) {
-        const normalizedEmail = email.toLowerCase().trim();
+      if (authError) return { error: authError };
+      if (!authData.user) return { error: new Error('Failed to create user') };
 
-        await supabase
-          .from('people')
-          .update({ user_id: data.user.id })
-          .eq('email', normalizedEmail);
+      const { data: orgData, error: orgError } = await supabase
+        .from('organizations')
+        .insert({ name: organizationName })
+        .select()
+        .single();
 
-        await supabase
-          .from('allowed_emails')
-          .insert([{
-            email: normalizedEmail,
-            is_admin: false
-          }])
-          .select()
-          .maybeSingle();
-      }
+      if (orgError) return { error: orgError };
+
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email,
+          full_name: fullName,
+          role: 'admin',
+          organization_id: orgData.id,
+        });
+
+      if (profileError) return { error: profileError };
 
       return { error: null };
     } catch (error) {
@@ -92,10 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setProfile(null);
   };
 
+  const isAdmin = profile?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ user, isAdmin, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

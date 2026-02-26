@@ -1,26 +1,16 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabase';
-import { HardHat, Mail, Lock, AlertCircle, ShieldCheck, Languages } from 'lucide-react';
+import { Clock, Mail, Lock, AlertCircle, Building2, User } from 'lucide-react';
 
 export default function AuthForm() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
-
-  async function checkEmailInPeopleList(emailToCheck: string): Promise<boolean> {
-    const { data } = await supabase
-      .from('people')
-      .select('id')
-      .eq('email', emailToCheck.toLowerCase().trim())
-      .maybeSingle();
-    return !!data;
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +29,14 @@ export default function AuthForm() {
       return;
     }
 
-    if (isSignUp) {
-      const isInPeopleList = await checkEmailInPeopleList(email);
-      if (!isInPeopleList) {
-        setError('Your email must be in the people list to register. Please contact an administrator.');
-        setLoading(false);
-        return;
-      }
+    if (isSignUp && (!fullName || !organizationName)) {
+      setError('Please fill in all fields');
+      setLoading(false);
+      return;
     }
 
     const { error: authError } = isSignUp
-      ? await signUp(email, password)
+      ? await signUp(email, password, fullName, organizationName)
       : await signIn(email, password);
 
     if (authError) {
@@ -59,40 +46,19 @@ export default function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center p-4">
-      <button
-        onClick={() => setLanguage(language === 'en' ? 'et' : 'en')}
-        className="absolute top-4 right-4 z-10 flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg text-sm font-medium text-gray-700 hover:text-gray-900 transition-all"
-        title={language === 'en' ? 'Switch to Estonian' : 'Vaheta inglise keelele'}
-      >
-        <Languages className="w-4 h-4" />
-        <span className="font-semibold">{language.toUpperCase()}</span>
-      </button>
-
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-0 right-0 h-2 bg-amber-400" />
-        <div className="absolute top-2 left-0 right-0 h-1 bg-gray-900" />
-      </div>
-
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative">
-        <div className="bg-gray-900 p-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-400 rounded-full mb-4 shadow-lg">
-            <HardHat className="w-9 h-9 text-gray-900" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4 shadow-lg">
+            <Clock className="w-9 h-9 text-blue-600" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">Tool Inventory</h1>
-          <p className="text-gray-400 text-sm">
-            {isSignUp ? 'Create an account to get started' : 'Sign in to manage your inventory'}
+          <h1 className="text-3xl font-bold text-white mb-2">TimeTracker</h1>
+          <p className="text-blue-100 text-sm">
+            {isSignUp ? 'Create your organization account' : 'Track time with precision'}
           </p>
         </div>
 
-        {isSignUp && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <p className="text-xs text-amber-800">Only people in the people list can register. Contact an admin if needed.</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-8 space-y-5">
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -100,9 +66,49 @@ export default function AuthForm() {
             </div>
           )}
 
+          {isSignUp && (
+            <>
+              <div>
+                <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="fullName"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="organizationName" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Organization Name
+                </label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    id="organizationName"
+                    type="text"
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="Acme Corp"
+                    required
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              {t('auth.email')}
+            <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+              Email
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -111,7 +117,7 @@ export default function AuthForm() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all bg-stone-50"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 placeholder="you@example.com"
                 required
               />
@@ -119,8 +125,8 @@ export default function AuthForm() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              {t('auth.password')}
+            <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+              Password
             </label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -129,9 +135,10 @@ export default function AuthForm() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all bg-stone-50"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 placeholder="••••••••"
                 required
+                minLength={6}
               />
             </div>
             {isSignUp && (
@@ -142,21 +149,21 @@ export default function AuthForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
           >
-            {loading ? t('auth.loading') : (isSignUp ? t('auth.signUpButton') : t('auth.signInButton'))}
+            {loading ? 'Loading...' : (isSignUp ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
-        <div className="pb-6 text-center">
+        <div className="pb-8 text-center">
           <button
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError('');
             }}
-            className="text-sm text-amber-600 hover:text-amber-700 font-medium"
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
           >
-            {isSignUp ? t('auth.alreadyHaveAccount') : t('auth.dontHaveAccount')}
+            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
           </button>
         </div>
       </div>

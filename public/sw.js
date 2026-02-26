@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tool-tracker-v2';
+const CACHE_NAME = 'timetracker-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

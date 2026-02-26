@@ -1,15 +1,15 @@
 {
   "id": "/",
-  "name": "Tool Inventory Tracking",
-  "short_name": "Tool Tracker",
-  "description": "Track and manage your tool inventory across multiple locations",
+  "name": "TimeTracker - GPS Time Tracking",
+  "short_name": "TimeTracker",
+  "description": "Track employee time with GPS geofencing and location logging",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#1f2937",
-  "theme_color": "#d97706",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
   "orientation": "portrait-primary",
-  "categories": ["productivity", "business"],
+  "categories": ["productivity", "business", "utilities"],
   "icons": [
     {
       "src": "/icon-192.png",
