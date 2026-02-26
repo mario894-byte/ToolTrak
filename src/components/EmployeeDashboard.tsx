@@ -91,7 +91,7 @@ export const EmployeeDashboard: React.FC = () => {
 
   const loadSites = async () => {
     const { data, error } = await supabase
-      .from('sites')
+      .from('tt_sites')
       .select('*')
       .eq('is_active', true);
 
@@ -104,7 +104,7 @@ export const EmployeeDashboard: React.FC = () => {
 
   const loadActiveEntry = async () => {
     const { data, error } = await supabase
-      .from('time_entries')
+      .from('tt_time_entries')
       .select(`
         id,
         site_id,
@@ -172,7 +172,7 @@ export const EmployeeDashboard: React.FC = () => {
   const logLocation = async () => {
     if (!activeEntry || !currentLocation) return;
 
-    await supabase.from('location_logs').insert({
+    await supabase.from('tt_location_logs').insert({
       time_entry_id: activeEntry.id,
       user_id: profile?.id,
       latitude: currentLocation.lat,
@@ -198,7 +198,7 @@ export const EmployeeDashboard: React.FC = () => {
     setLoading(true);
 
     const { data, error } = await supabase
-      .from('time_entries')
+      .from('tt_time_entries')
       .insert({
         user_id: profile?.id,
         site_id: siteId,
@@ -229,7 +229,7 @@ export const EmployeeDashboard: React.FC = () => {
     setLoading(true);
 
     const { error } = await supabase
-      .from('time_entries')
+      .from('tt_time_entries')
       .update({
         clock_out_time: new Date().toISOString(),
         clock_out_latitude: currentLocation.lat,

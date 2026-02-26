@@ -76,7 +76,7 @@ export const AdminDashboard: React.FC = () => {
 
   const loadSites = async () => {
     const { data, error } = await supabase
-      .from('sites')
+      .from('tt_sites')
       .select('*')
       .eq('organization_id', profile?.organization_id)
       .order('created_at', { ascending: false });
@@ -97,7 +97,7 @@ export const AdminDashboard: React.FC = () => {
         full_name,
         phone,
         is_active,
-        user_sites (site_id)
+        tt_user_sites (site_id)
       `)
       .eq('organization_id', profile?.organization_id)
       .eq('role', 'employee');
@@ -107,7 +107,7 @@ export const AdminDashboard: React.FC = () => {
     } else {
       const formatted = data?.map(emp => ({
         ...emp,
-        assignedSites: emp.user_sites?.map((us: any) => us.site_id) || [],
+        assignedSites: emp.tt_user_sites?.map((us: any) => us.site_id) || [],
       })) || [];
       setEmployees(formatted);
     }
@@ -115,14 +115,14 @@ export const AdminDashboard: React.FC = () => {
 
   const loadTimeEntries = async () => {
     const { data, error } = await supabase
-      .from('time_entries')
+      .from('tt_time_entries')
       .select(`
         id,
         clock_in_time,
         clock_out_time,
         total_hours,
-        user:users!time_entries_user_id_fkey (full_name, email),
-        site:sites!time_entries_site_id_fkey (name)
+        user:users!tt_time_entries_user_id_fkey (full_name, email),
+        site:tt_sites!tt_time_entries_site_id_fkey (name)
       `)
       .order('clock_in_time', { ascending: false })
       .limit(50);
@@ -136,7 +136,7 @@ export const AdminDashboard: React.FC = () => {
 
   const handleCreateSite = async () => {
     const { error } = await supabase
-      .from('sites')
+      .from('tt_sites')
       .insert({
         organization_id: profile?.organization_id,
         name: siteForm.name,
@@ -160,7 +160,7 @@ export const AdminDashboard: React.FC = () => {
     if (!site) return;
 
     const { error } = await supabase
-      .from('sites')
+      .from('tt_sites')
       .update({
         name: site.name,
         address: site.address,
@@ -182,7 +182,7 @@ export const AdminDashboard: React.FC = () => {
     if (!confirm('Are you sure you want to delete this site?')) return;
 
     const { error } = await supabase
-      .from('sites')
+      .from('tt_sites')
       .delete()
       .eq('id', id);
 
