@@ -86,8 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (authError) {
-        if (authError.message.includes('already registered')) {
-          return { error: new Error('An account with this email already exists') };
+        if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+          return { error: new Error('An account with this email already exists. Please sign in instead.') };
         }
         return { error: authError };
       }
@@ -101,7 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (orgError) {
-        return { error: orgError };
+        await supabase.auth.signOut();
+        return { error: new Error('Failed to create organization. Please try signing in.') };
       }
 
       const { error: profileError } = await supabase
@@ -115,7 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
       if (profileError) {
-        return { error: profileError };
+        await supabase.auth.signOut();
+        return { error: new Error('Failed to create profile. Please try signing in.') };
       }
 
       return { error: null };
