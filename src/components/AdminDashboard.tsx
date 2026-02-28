@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, MapPin, Clock, LogOut, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
+import SiteFormModal from './SiteFormModal';
 
 interface Site {
   id: string;
@@ -38,18 +39,10 @@ export const AdminDashboard: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingSite, setEditingSite] = useState<string | null>(null);
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<string | null>(null);
-  const [newSite, setNewSite] = useState(false);
+  const [showSiteModal, setShowSiteModal] = useState(false);
   const [newEmployee, setNewEmployee] = useState(false);
-
-  const [siteForm, setSiteForm] = useState({
-    name: '',
-    address: '',
-    latitude: '',
-    longitude: '',
-    geofence_radius: '100',
-  });
 
   const [employeeForm, setEmployeeForm] = useState({
     email: '',
@@ -134,48 +127,34 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleCreateSite = async () => {
-    const { error } = await supabase
-      .from('tt_sites')
-      .insert({
-        organization_id: profile?.organization_id,
-        name: siteForm.name,
-        address: siteForm.address,
-        latitude: parseFloat(siteForm.latitude),
-        longitude: parseFloat(siteForm.longitude),
-        geofence_radius: parseInt(siteForm.geofence_radius),
-      });
+  const handleSaveSite = async (data: {
+    name: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    geofence_radius: number;
+  }) => {
+    if (editingSite) {
+      const { error } = await supabase
+        .from('tt_sites')
+        .update(data)
+        .eq('id', editingSite.id);
 
-    if (error) {
-      alert('Error creating site: ' + error.message);
+      if (error) throw error;
     } else {
-      setNewSite(false);
-      setSiteForm({ name: '', address: '', latitude: '', longitude: '', geofence_radius: '100' });
-      loadSites();
+      const { error } = await supabase
+        .from('tt_sites')
+        .insert({
+          organization_id: profile?.organization_id,
+          ...data,
+        });
+
+      if (error) throw error;
     }
-  };
 
-  const handleUpdateSite = async (id: string) => {
-    const site = sites.find(s => s.id === id);
-    if (!site) return;
-
-    const { error } = await supabase
-      .from('tt_sites')
-      .update({
-        name: site.name,
-        address: site.address,
-        latitude: site.latitude,
-        longitude: site.longitude,
-        geofence_radius: site.geofence_radius,
-      })
-      .eq('id', id);
-
-    if (error) {
-      alert('Error updating site: ' + error.message);
-    } else {
-      setEditingSite(null);
-      loadSites();
-    }
+    setEditingSite(null);
+    setShowSiteModal(false);
+    loadSites();
   };
 
   const handleDeleteSite = async (id: string) => {
@@ -313,7 +292,10 @@ export const AdminDashboard: React.FC = () => {
                 <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900">Manage Sites</h2>
                   <button
-                    onClick={() => setNewSite(true)}
+                    onClick={() => {
+                      setEditingSite(null);
+                      setShowSiteModal(true);
+                    }}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     <Plus className="w-5 h-5" />
@@ -321,150 +303,65 @@ export const AdminDashboard: React.FC = () => {
                   </button>
                 </div>
                 <div className="p-6">
-                  {newSite && (
-                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <h3 className="font-semibold text-gray-900 mb-4">New Site</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input
-                          type="text"
-                          placeholder="Site Name"
-                          value={siteForm.name}
-                          onChange={e => setSiteForm({ ...siteForm, name: e.target.value })}
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Address"
-                          value={siteForm.address}
-                          onChange={e => setSiteForm({ ...siteForm, address: e.target.value })}
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="Latitude"
-                          value={siteForm.latitude}
-                          onChange={e => setSiteForm({ ...siteForm, latitude: e.target.value })}
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="Longitude"
-                          value={siteForm.longitude}
-                          onChange={e => setSiteForm({ ...siteForm, longitude: e.target.value })}
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Geofence Radius (meters)"
-                          value={siteForm.geofence_radius}
-                          onChange={e => setSiteForm({ ...siteForm, geofence_radius: e.target.value })}
-                          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="flex gap-2 mt-4">
-                        <button
-                          onClick={handleCreateSite}
-                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <Save className="w-4 h-4" />
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setNewSite(false)}
-                          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                        >
-                          <X className="w-4 h-4" />
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
+                  {showSiteModal && (
+                    <SiteFormModal
+                      site={editingSite}
+                      onClose={() => {
+                        setShowSiteModal(false);
+                        setEditingSite(null);
+                      }}
+                      onSave={handleSaveSite}
+                    />
                   )}
 
                   <div className="space-y-4">
-                    {sites.map(site => (
-                      <div key={site.id} className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
-                        {editingSite === site.id ? (
-                          <div className="space-y-3">
-                            <input
-                              type="text"
-                              value={site.name}
-                              onChange={e => setSites(sites.map(s => s.id === site.id ? { ...s, name: e.target.value } : s))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                            />
-                            <input
-                              type="text"
-                              value={site.address}
-                              onChange={e => setSites(sites.map(s => s.id === site.id ? { ...s, address: e.target.value } : s))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                            />
-                            <div className="grid grid-cols-3 gap-2">
-                              <input
-                                type="number"
-                                step="any"
-                                value={site.latitude}
-                                onChange={e => setSites(sites.map(s => s.id === site.id ? { ...s, latitude: parseFloat(e.target.value) } : s))}
-                                className="px-3 py-2 border border-gray-300 rounded-lg"
-                              />
-                              <input
-                                type="number"
-                                step="any"
-                                value={site.longitude}
-                                onChange={e => setSites(sites.map(s => s.id === site.id ? { ...s, longitude: parseFloat(e.target.value) } : s))}
-                                className="px-3 py-2 border border-gray-300 rounded-lg"
-                              />
-                              <input
-                                type="number"
-                                value={site.geofence_radius}
-                                onChange={e => setSites(sites.map(s => s.id === site.id ? { ...s, geofence_radius: parseInt(e.target.value) } : s))}
-                                className="px-3 py-2 border border-gray-300 rounded-lg"
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleUpdateSite(site.id)}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                              >
-                                <Save className="w-4 h-4" />
-                                Save
-                              </button>
-                              <button
-                                onClick={() => setEditingSite(null)}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
-                              >
-                                <X className="w-4 h-4" />
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
+                    {sites.length === 0 ? (
+                      <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                        <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-500">No sites yet. Add your first site to get started.</p>
+                      </div>
+                    ) : (
+                      sites.map(site => (
+                        <div key={site.id} className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
                           <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold text-gray-900">{site.name}</h3>
-                              <p className="text-sm text-gray-600 mt-1">{site.address}</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {site.latitude}, {site.longitude} • Radius: {site.geofence_radius}m
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <MapPin className="w-5 h-5 text-blue-600" />
+                                <h3 className="font-semibold text-gray-900">{site.name}</h3>
+                                <span className={`ml-2 px-2 py-0.5 text-xs font-medium rounded ${
+                                  site.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {site.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1 ml-7">{site.address}</p>
+                              <p className="text-xs text-gray-500 mt-1 ml-7">
+                                {site.latitude.toFixed(6)}, {site.longitude.toFixed(6)} • Geofence: {site.geofence_radius}m
                               </p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 ml-4">
                               <button
-                                onClick={() => setEditingSite(site.id)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                onClick={() => {
+                                  setEditingSite(site);
+                                  setShowSiteModal(true);
+                                }}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Edit site"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => handleDeleteSite(site.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete site"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
