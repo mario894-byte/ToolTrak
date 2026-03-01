@@ -29,6 +29,8 @@ export const EmployeeDashboard: React.FC = () => {
   const [nearestSite, setNearestSite] = useState<{ site: Site; distance: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const locationLogIntervalRef = useRef<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<string>('0:00:00');
+  const timerIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     loadSites();
@@ -42,6 +44,9 @@ export const EmployeeDashboard: React.FC = () => {
       if (locationLogIntervalRef.current !== null) {
         clearInterval(locationLogIntervalRef.current);
       }
+      if (timerIntervalRef.current !== null) {
+        clearInterval(timerIntervalRef.current);
+      }
     };
   }, []);
 
@@ -52,9 +57,24 @@ export const EmployeeDashboard: React.FC = () => {
   }, [currentLocation, sites]);
 
   useEffect(() => {
-    if (activeEntry && currentLocation) {
-      logLocation();
+    if (activeEntry) {
+      if (currentLocation) {
+        logLocation();
+      }
+      updateTimer();
+      timerIntervalRef.current = window.setInterval(updateTimer, 1000);
+    } else {
+      if (timerIntervalRef.current !== null) {
+        clearInterval(timerIntervalRef.current);
+      }
+      setElapsedTime('0:00:00');
     }
+
+    return () => {
+      if (timerIntervalRef.current !== null) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
   }, [activeEntry]);
 
   const startLocationTracking = () => {
@@ -63,30 +83,38 @@ export const EmployeeDashboard: React.FC = () => {
       return;
     }
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        setCurrentLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocationError('');
-      },
-      (error) => {
-        setLocationError('Unable to get your location. Please enable location services.');
-        console.error('Geolocation error:', error);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
-      }
-    );
+    const updateLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+          setLocationError('');
+        },
+        (error) => {
+          setLocationError('Unable to get your location. Please enable location services.');
+          console.error('Geolocation error:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    };
+
+    updateLocation();
+
+    watchIdRef.current = window.setInterval(() => {
+      updateLocation();
+    }, 900000);
 
     locationLogIntervalRef.current = window.setInterval(() => {
       if (activeEntry && currentLocation) {
         logLocation();
       }
-    }, 60000);
+    }, 900000);
   };
 
   const loadSites = async () => {
@@ -246,13 +274,18 @@ export const EmployeeDashboard: React.FC = () => {
     setLoading(false);
   };
 
-  const formatDuration = (startTime: string): string => {
-    const start = new Date(startTime);
+  const updateTimer = () => {
+    if (!activeEntry) return;
+
+    const start = new Date(activeEntry.clock_in_time);
     const now = new Date();
     const diff = now.getTime() - start.getTime();
+
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
-    return `${hours}h ${minutes}m`;
+    const seconds = Math.floor((diff % 60000) / 1000);
+
+    setElapsedTime(`${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
   };
 
   return (
@@ -305,23 +338,31 @@ export const EmployeeDashboard: React.FC = () => {
         )}
 
         {activeEntry ? (
-          <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-xl p-8 mb-8 border-2 border-green-200">
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
-                <Clock className="w-10 h-10 text-green-600" />
+              <div className="inline-flex items-center justify-center w-24 h-24 bg-green-500 rounded-full mb-6 shadow-lg animate-pulse">
+                <Clock className="w-12 h-12 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Clocked In</h2>
-              <p className="text-gray-600 mb-1">{activeEntry.site.name}</p>
-              <p className="text-sm text-gray-500 mb-4">
-                Since {new Date(activeEntry.clock_in_time).toLocaleTimeString()}
-              </p>
-              <div className="text-4xl font-bold text-blue-600 mb-8">
-                {formatDuration(activeEntry.clock_in_time)}
+              <div className="mb-6">
+                <div className="inline-block px-4 py-1 bg-green-500 text-white text-sm font-semibold rounded-full mb-4">
+                  ACTIVE
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Currently Clocked In</h2>
+                <p className="text-lg text-gray-700 font-medium mb-1">{activeEntry.site.name}</p>
+                <p className="text-sm text-gray-600">
+                  Started at {new Date(activeEntry.clock_in_time).toLocaleTimeString()}
+                </p>
+              </div>
+              <div className="bg-white rounded-xl p-8 mb-8 shadow-md">
+                <p className="text-sm text-gray-500 uppercase tracking-wide mb-2">Elapsed Time</p>
+                <div className="text-6xl font-bold text-blue-600 font-mono tracking-tight">
+                  {elapsedTime}
+                </div>
               </div>
               <button
                 onClick={handleClockOut}
                 disabled={loading}
-                className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="px-12 py-5 bg-red-600 hover:bg-red-700 text-white text-lg font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:scale-105"
               >
                 {loading ? 'Clocking Out...' : 'Clock Out'}
               </button>
@@ -418,7 +459,7 @@ export const EmployeeDashboard: React.FC = () => {
               <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                 <span className="text-blue-600 font-bold text-xs">3</span>
               </div>
-              <p>Your location is logged every minute while clocked in</p>
+              <p>Your location is checked every 15 minutes while clocked in to conserve battery</p>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">

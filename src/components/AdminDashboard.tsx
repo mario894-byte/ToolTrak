@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, MapPin, Clock, LogOut, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Users, MapPin, Clock, LogOut, Plus, Edit2, Trash2, Save, X, Calendar } from 'lucide-react';
 import SiteFormModal from './SiteFormModal';
 
 interface Site {
@@ -25,6 +25,8 @@ interface Employee {
 
 interface TimeEntry {
   id: string;
+  user_id: string;
+  site_id: string;
   user: { full_name: string; email: string };
   site: { name: string };
   clock_in_time: string;
@@ -43,6 +45,7 @@ export const AdminDashboard: React.FC = () => {
   const [editingEmployee, setEditingEmployee] = useState<string | null>(null);
   const [showSiteModal, setShowSiteModal] = useState(false);
   const [newEmployee, setNewEmployee] = useState(false);
+  const [editingTimeEntry, setEditingTimeEntry] = useState<string | null>(null);
 
   const [employeeForm, setEmployeeForm] = useState({
     email: '',
@@ -111,6 +114,8 @@ export const AdminDashboard: React.FC = () => {
       .from('tt_time_entries')
       .select(`
         id,
+        user_id,
+        site_id,
         clock_in_time,
         clock_out_time,
         total_hours,
@@ -118,7 +123,7 @@ export const AdminDashboard: React.FC = () => {
         site:tt_sites!tt_time_entries_site_id_fkey (name)
       `)
       .order('clock_in_time', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (error) {
       console.error('Error loading time entries:', error);
@@ -219,6 +224,52 @@ export const AdminDashboard: React.FC = () => {
     } else {
       loadEmployees();
     }
+  };
+
+  const handleUpdateTimeEntry = async (id: string) => {
+    const entry = timeEntries.find(e => e.id === id);
+    if (!entry) return;
+
+    const { error } = await supabase
+      .from('tt_time_entries')
+      .update({
+        clock_in_time: entry.clock_in_time,
+        clock_out_time: entry.clock_out_time,
+      })
+      .eq('id', id);
+
+    if (error) {
+      alert('Error updating time entry: ' + error.message);
+    } else {
+      setEditingTimeEntry(null);
+      loadTimeEntries();
+    }
+  };
+
+  const handleDeleteTimeEntry = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this time entry?')) return;
+
+    const { error } = await supabase
+      .from('tt_time_entries')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert('Error deleting time entry: ' + error.message);
+    } else {
+      loadTimeEntries();
+    }
+  };
+
+  const formatDateTimeForInput = (dateString: string | undefined): string => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   return (
@@ -462,8 +513,15 @@ export const AdminDashboard: React.FC = () => {
 
             {activeTab === 'reports' && (
               <div className="bg-white rounded-xl shadow-sm">
-                <div className="p-6 border-b border-gray-200">
-                  <h2 className="text-xl font-semibold text-gray-900">Time Reports</h2>
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Time Reports</h2>
+                    <p className="text-sm text-gray-500 mt-1">View and edit employee time entries</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Calendar className="w-4 h-4" />
+                    <span>Last 100 entries</span>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -474,27 +532,113 @@ export const AdminDashboard: React.FC = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clock In</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clock Out</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {timeEntries.map(entry => (
-                        <tr key={entry.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{entry.user.full_name}</div>
-                            <div className="text-xs text-gray-500">{entry.user.email}</div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-900">{entry.site.name}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600">
-                            {new Date(entry.clock_in_time).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">
-                            {entry.clock_out_time ? new Date(entry.clock_out_time).toLocaleString() : '-'}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                            {entry.total_hours ? entry.total_hours.toFixed(2) : '-'}
+                      {timeEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center">
+                            <Clock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                            <p className="text-gray-500">No time entries yet</p>
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        timeEntries.map(entry => (
+                          <tr key={entry.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-gray-900">{entry.user.full_name}</div>
+                              <div className="text-xs text-gray-500">{entry.user.email}</div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">{entry.site.name}</td>
+                            <td className="px-6 py-4">
+                              {editingTimeEntry === entry.id ? (
+                                <input
+                                  type="datetime-local"
+                                  value={formatDateTimeForInput(entry.clock_in_time)}
+                                  onChange={e => {
+                                    const newTime = new Date(e.target.value).toISOString();
+                                    setTimeEntries(timeEntries.map(te =>
+                                      te.id === entry.id ? { ...te, clock_in_time: newTime } : te
+                                    ));
+                                  }}
+                                  className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-600">
+                                  {new Date(entry.clock_in_time).toLocaleString()}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              {editingTimeEntry === entry.id ? (
+                                <input
+                                  type="datetime-local"
+                                  value={formatDateTimeForInput(entry.clock_out_time)}
+                                  onChange={e => {
+                                    const newTime = e.target.value ? new Date(e.target.value).toISOString() : undefined;
+                                    setTimeEntries(timeEntries.map(te =>
+                                      te.id === entry.id ? { ...te, clock_out_time: newTime } : te
+                                    ));
+                                  }}
+                                  className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                />
+                              ) : (
+                                <div className="text-sm text-gray-600">
+                                  {entry.clock_out_time ? new Date(entry.clock_out_time).toLocaleString() : (
+                                    <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
+                                      Active
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                              {entry.total_hours ? `${entry.total_hours.toFixed(2)}h` : '-'}
+                            </td>
+                            <td className="px-6 py-4">
+                              {editingTimeEntry === entry.id ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleUpdateTimeEntry(entry.id)}
+                                    className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
+                                    title="Save changes"
+                                  >
+                                    <Save className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingTimeEntry(null);
+                                      loadTimeEntries();
+                                    }}
+                                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditingTimeEntry(entry.id)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="Edit times"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTimeEntry(entry.id)}
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                    title="Delete entry"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
